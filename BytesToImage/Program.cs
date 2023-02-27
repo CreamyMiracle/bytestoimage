@@ -6,12 +6,13 @@ using static System.Formats.Asn1.AsnWriter;
 
 Console.WriteLine("Hello, World!");
 
-var fileName = @"C:\Users\Rajala\Desktop\reference.png";
-var fileName1 = @"C:\Users\Rajala\Desktop\binary.png";
+
+var fileName = @"C:\Users\JuhanaR\Desktop\verrokki.png";
+var binaryFile = @"C:\Users\JuhanaR\Desktop\binary.png";
 var fileName2 = @"C:\Users\Rajala\Desktop\reference1.png";
 
-FileToImage(fileName, fileName1);
-ImageToFile(fileName1, fileName2);
+FileToImage(fileName, binaryFile);
+//ImageToFile(fileName1, fileName2);
 
 static void FileToImage(string inputFilePath, string outputFile)
 {
@@ -29,15 +30,24 @@ static void FileToImage(string inputFilePath, string outputFile)
         while ((c = inputStream.Read(buffer, 0, buffer.Length)) > 0)
         {
             int column = 0;
-            foreach (byte bytes in buffer)
+            int index = 0;
+            foreach (byte _byte in buffer)
             {
-                bool[] bits = ConvertByteToBoolArray(bytes);
+                bool[] bits = ByteToBits(_byte);
 
                 foreach (bool bit in bits)
                 {
-                    bitmap.SetPixel(column, row, BitToColor(bit));
+                    Color prevColor = bitmap.GetPixel(column, row);
+                    Color newColor = EncodeBitToColor(bit, index, prevColor);
+                    bitmap.SetPixel(column, row, newColor);
+                    index++;
+
+                    if (index == 32)
+                    {
+                        index = 0;
+                        column++;
+                    }
                 }
-                column++;
             }
             row++;
         }
@@ -46,45 +56,45 @@ static void FileToImage(string inputFilePath, string outputFile)
     bitmap.Save(outputFile, ImageFormat.Bmp);
 }
 
-static void ImageToFile(string inputFile, string outputFile)
-{
-    Bitmap bitmap = new Bitmap(inputFile);
-    using (FileStream outputStream = File.OpenWrite(outputFile))
-    {
-        bool?[] bits = new bool?[8];
-        int pixelCount = 0;
-        for (int i = 0; i < bitmap.Width; i++)
-        {
-            for (int j = 0; j < bitmap.Height; j++)
-            {
-                Color pixel = bitmap.GetPixel(i, j);
-                bool? bit = ColorToBit(pixel);
+//static void ImageToFile(string inputFile, string outputFile)
+//{
+//    Bitmap bitmap = new Bitmap(inputFile);
+//    using (FileStream outputStream = File.OpenWrite(outputFile))
+//    {
+//        bool?[] bits = new bool?[8];
+//        int pixelCount = 0;
+//        for (int i = 0; i < bitmap.Width; i++)
+//        {
+//            for (int j = 0; j < bitmap.Height; j++)
+//            {
+//                Color pixel = bitmap.GetPixel(i, j);
+//                bool? bit = ColorToBit(pixel);
 
-                if (bit != null)
-                {
-                    bits[pixelCount] = bit;
-                }
+//                if (bit != null)
+//                {
+//                    bits[pixelCount] = bit;
+//                }
 
-                if (pixelCount == 8)
-                {
-                    byte _byte = BitsToByte(bits);
-                    outputStream.WriteByte(_byte);
-                    bits = new bool?[8];
-                    pixelCount = 0;
-                }
+//                if (pixelCount == 8)
+//                {
+//                    byte _byte = BitsToByte(bits);
+//                    outputStream.WriteByte(_byte);
+//                    bits = new bool?[8];
+//                    pixelCount = 0;
+//                }
 
-                pixelCount++;
-            }
-        }
+//                pixelCount++;
+//            }
+//        }
 
-        if (pixelCount != 0)
-        {
-            byte _byte = BitsToByte(bits);
-            outputStream.WriteByte(_byte);
-            bits = new bool?[8];
-        }
-    }
-}
+//        if (pixelCount != 0)
+//        {
+//            byte _byte = BitsToByte(bits);
+//            outputStream.WriteByte(_byte);
+//            bits = new bool?[8];
+//        }
+//    }
+//}
 
 static byte ConvertBoolArrayToByte(bool[] source)
 {
@@ -97,7 +107,9 @@ static byte ConvertBoolArrayToByte(bool[] source)
     {
         // if the element is 'true' set the bit at that position
         if (b)
+        {
             result |= (byte)(1 << (7 - index));
+        }
 
         index++;
     }
@@ -105,14 +117,16 @@ static byte ConvertBoolArrayToByte(bool[] source)
     return result;
 }
 
-static bool[] ConvertByteToBoolArray(byte b)
+static bool[] ByteToBits(byte b)
 {
     // prepare the return result
     bool[] result = new bool[8];
 
     // check each bit in the byte. if 1 set to true, if 0 set to false
     for (int i = 0; i < 8; i++)
+    {
         result[i] = (b & (1 << i)) != 0;
+    }
 
     // reverse the array
     Array.Reverse(result);
@@ -120,7 +134,7 @@ static bool[] ConvertByteToBoolArray(byte b)
     return result;
 }
 
-static byte BitsToByte(bool?[] bits)
+static byte BitsToByte(bool[] bits)
 {
     byte val = 0;
     foreach (bool b in bits)
@@ -131,12 +145,58 @@ static byte BitsToByte(bool?[] bits)
     return val;
 }
 
-static Color BitToColor(bool bit)
+static Color EncodeBitToColor(bool bit, int index, Color color)
 {
-    return bit ? Color.White : Color.Red;
+    byte colorByte = default;
+    int modIndex = index;
+
+    if (0 <= index && index <= 7)
+    {
+        colorByte = color.A;
+    }
+    else if (8 <= index && index <= 15)
+    {
+        colorByte = color.R;
+        modIndex = index - 8;
+    }
+    else if (16 <= index && index <= 23)
+    {
+        colorByte = color.G;
+        modIndex = index - 16;
+    }
+    else if (24 <= index && index <= 31)
+    {
+        colorByte = color.B;
+        modIndex = index - 24;
+    }
+
+    bool[] alphaBits = ByteToBits(colorByte);
+    alphaBits[modIndex] = bit;
+
+    byte channelByte = BitsToByte(alphaBits);
+
+    int int32Byte = Convert.ToInt32(channelByte);
+    if (0 <= index && index <= 7)
+    {
+        color = Color.FromArgb(int32Byte, color.R, color.G, color.B);
+    }
+    else if (8 <= index && index <= 15)
+    {
+        color = Color.FromArgb(color.A, int32Byte, color.G, color.B);
+    }
+    else if (16 <= index && index <= 23)
+    {
+        color = Color.FromArgb(color.A, color.R, int32Byte, color.B);
+    }
+    else if (24 <= index && index <= 31)
+    {
+        color = Color.FromArgb(color.A, color.R, color.G, int32Byte);
+    }
+
+    return color;
 }
 
-static bool? ColorToBit(Color color)
+static bool? DecodeBitFromColor(Color color)
 {
     return color == Color.White ? true : color == Color.Red ? false : null;
 }
